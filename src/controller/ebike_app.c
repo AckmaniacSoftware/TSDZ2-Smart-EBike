@@ -402,11 +402,11 @@ static void apply_torque_assist()
     else { ui8_adc_motor_current_target = ui16_adc_motor_current_target_torque_assist; }
         
     // set max battery current relative to the motor max current, this way it is a smooth transition from motor current control to battery current control
-    ui8_adc_battery_current_target = fmapf((uint32_t) ui8_adc_motor_current_target,
-                                           (uint32_t) 0,
-                                           (uint32_t) ADC_10_BIT_MOTOR_PHASE_CURRENT_MAX,
-                                           (uint32_t) 0,
-                                           (uint32_t) ui8_adc_battery_current_max);
+    ui8_adc_battery_current_target = map((uint32_t) ui8_adc_motor_current_target,
+                                         (uint32_t) 0,
+                                         (uint32_t) ADC_10_BIT_MOTOR_PHASE_CURRENT_MAX,
+                                         (uint32_t) 0,
+                                         (uint32_t) ui8_adc_battery_current_max);
 
     // set duty cycle target
     if (ui8_adc_motor_current_target && ui8_adc_battery_current_target) { ui8_duty_cycle_target = PWM_DUTY_CYCLE_MAX; }
