@@ -368,6 +368,7 @@ volatile uint16_t ui16_adc_battery_current = 0;
 volatile uint8_t ui8_adc_battery_current_filtered = 0;
 volatile uint8_t ui8_controller_adc_battery_current = 0;
 volatile uint8_t ui8_controller_adc_battery_current_target = 0;
+volatile uint8_t ui8_controller_adc_motor_current_target = 0;
 volatile uint8_t ui8_g_duty_cycle = 0;
 volatile uint8_t ui8_controller_duty_cycle_target = 0;
 volatile uint8_t ui8_g_foc_angle = 0;
@@ -633,6 +634,7 @@ void TIM1_CAP_COM_IRQHandler(void) __interrupt(TIM1_CAP_COM_IRQHANDLER)
   if ((ui8_g_duty_cycle > ui8_controller_duty_cycle_target) ||
       (ui8_controller_adc_battery_current > ui8_controller_adc_battery_current_target) ||
       (ui8_adc_motor_phase_current > ADC_10_BIT_MOTOR_PHASE_CURRENT_MAX) ||
+      (ui8_adc_motor_phase_current > ui8_controller_adc_motor_current_target) ||
       (ui16_motor_speed_erps > ui16_max_motor_speed_erps) ||
       (UI8_ADC_BATTERY_VOLTAGE < ui8_adc_battery_voltage_cut_off) ||
       (ui8_brake_state))

@@ -43,6 +43,7 @@ static uint16_t   ui16_battery_voltage_filtered_x1000 = 0;
 static uint8_t    ui8_battery_current_filtered_x10 = 0;
 static uint8_t    ui8_adc_battery_current_max = ADC_10_BIT_BATTERY_CURRENT_MAX;
 static uint8_t    ui8_adc_battery_current_target = 0;
+static uint8_t    ui8_adc_motor_current_target = 0;
 static uint8_t    ui8_duty_cycle_target = 0;
 
 
@@ -203,6 +204,7 @@ static void ebike_control_motor (void)
   ui16_duty_cycle_ramp_up_inverse_step = PWM_DUTY_CYCLE_RAMP_UP_INVERSE_STEP_DEFAULT;
   ui16_duty_cycle_ramp_down_inverse_step = PWM_DUTY_CYCLE_RAMP_DOWN_INVERSE_STEP_DEFAULT;
   ui8_adc_battery_current_target = 0;
+  ui8_adc_motor_current_target = ADC_10_BIT_MOTOR_PHASE_CURRENT_MAX;
   ui8_duty_cycle_target = 0;
 
   // reset initialization of Cruise PID controller
@@ -264,6 +266,7 @@ static void ebike_control_motor (void)
     ui16_controller_duty_cycle_ramp_up_inverse_step = PWM_DUTY_CYCLE_RAMP_UP_INVERSE_STEP_DEFAULT;
     ui16_controller_duty_cycle_ramp_down_inverse_step = PWM_DUTY_CYCLE_RAMP_DOWN_INVERSE_STEP_MIN;
     ui8_controller_adc_battery_current_target = 0;
+    ui8_controller_adc_motor_current_target = 0;
     ui8_controller_duty_cycle_target = 0;
   }
   else
@@ -271,8 +274,11 @@ static void ebike_control_motor (void)
     // limit max current if higher than configured hardware limit (safety)
     if (ui8_adc_battery_current_max > ADC_10_BIT_BATTERY_CURRENT_MAX) { ui8_adc_battery_current_max = ADC_10_BIT_BATTERY_CURRENT_MAX; }
     
-    // limit target current if higher than max value (safety)
+    // limit battery target current if higher than max value (safety)
     if (ui8_adc_battery_current_target > ui8_adc_battery_current_max) { ui8_adc_battery_current_target = ui8_adc_battery_current_max; }
+        
+    // limit motor target current if higher than max value (safety)
+    if (ui8_adc_motor_current_target > ADC_10_BIT_MOTOR_PHASE_CURRENT_MAX) { ui8_adc_motor_current_target = ADC_10_BIT_MOTOR_PHASE_CURRENT_MAX; }
     
     // limit target duty cycle if higher than max value
     if (ui8_duty_cycle_target > PWM_DUTY_CYCLE_MAX) { ui8_duty_cycle_target = PWM_DUTY_CYCLE_MAX; }
@@ -291,6 +297,8 @@ static void ebike_control_motor (void)
     
     // set target battery current in controller
     ui8_controller_adc_battery_current_target = ui8_adc_battery_current_target;
+    
+    ui8_controller_adc_motor_current_target = ui8_adc_motor_current_target;
     
     // set target duty cycle in controller
     ui8_controller_duty_cycle_target = ui8_duty_cycle_target;
@@ -357,7 +365,8 @@ static void apply_power_assist()
 
 static void apply_torque_assist()
 {
-  #define TORQUE_ASSIST_FACTOR_DENOMINATOR      110   // scale the torque assist target current
+  //#define TORQUE_ASSIST_FACTOR_DENOMINATOR      110   // scale the torque assist target current
+  #define TORQUE_ASSIST_FACTOR_DENOMINATOR      66   // scale the torque assist target current (110 * (90/150) 90 0 max battery current adc and 150 = max motor current adc)
   
   // check for assist without pedal rotation threshold when there is no pedal rotation and standing still
   if (ui8_assist_without_pedal_rotation_threshold && !ui8_pedal_cadence_RPM && !ui16_wheel_speed_x10)
@@ -372,8 +381,9 @@ static void apply_torque_assist()
     uint8_t ui8_torque_assist_factor = ui8_riding_mode_parameter;
     
     // calculate torque assist target current
-    uint16_t ui16_adc_battery_current_target_torque_assist = ((uint16_t) ui16_adc_pedal_torque_delta * ui8_torque_assist_factor) / TORQUE_ASSIST_FACTOR_DENOMINATOR;
-  
+    //uint16_t ui16_adc_battery_current_target_torque_assist = ((uint16_t) ui16_adc_pedal_torque_delta * ui8_torque_assist_factor) / TORQUE_ASSIST_FACTOR_DENOMINATOR;
+    uint16_t ui16_adc_motor_current_target_torque_assist = ((uint16_t) ui16_adc_pedal_torque_delta * ui8_torque_assist_factor) / TORQUE_ASSIST_FACTOR_DENOMINATOR;
+    
     // set motor acceleration
     ui16_duty_cycle_ramp_up_inverse_step = map((uint32_t) ui16_wheel_speed_x10,
                                                (uint32_t) 40, // 40 -> 4 kph
@@ -388,11 +398,18 @@ static void apply_torque_assist()
                                                  (uint32_t) PWM_DUTY_CYCLE_RAMP_DOWN_INVERSE_STEP_MIN);
                                                  
     // set battery current target
-    if (ui16_adc_battery_current_target_torque_assist > ui8_adc_battery_current_max) { ui8_adc_battery_current_target = ui8_adc_battery_current_max; }
-    else { ui8_adc_battery_current_target = ui16_adc_battery_current_target_torque_assist; }
+    if (ui16_adc_motor_current_target_torque_assist > ADC_10_BIT_MOTOR_PHASE_CURRENT_MAX) { ui8_adc_motor_current_target = ADC_10_BIT_MOTOR_PHASE_CURRENT_MAX; }
+    else { ui8_adc_motor_current_target = ui16_adc_motor_current_target_torque_assist; }
+        
+    // set max battery current relative to the motor max current, this way it is a smooth transition from motor current control to battery current control
+    ui8_adc_battery_current_target = fmapf((uint32_t) ui8_adc_motor_current_target,
+                                           (uint32_t) 0,
+                                           (uint32_t) ADC_10_BIT_MOTOR_PHASE_CURRENT_MAX,
+                                           (uint32_t) 0,
+                                           (uint32_t) ui8_adc_battery_current_max);
 
     // set duty cycle target
-    if (ui8_adc_battery_current_target) { ui8_duty_cycle_target = PWM_DUTY_CYCLE_MAX; }
+    if (ui8_adc_motor_current_target && ui8_adc_battery_current_target) { ui8_duty_cycle_target = PWM_DUTY_CYCLE_MAX; }
     else { ui8_duty_cycle_target = 0; }
   }
 }
